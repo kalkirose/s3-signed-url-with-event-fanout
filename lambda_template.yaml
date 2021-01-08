@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: My API Gateway and Lambda function
+
+Parameters:
+  bucketName:
+    Type: String
+
+Resources:
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: Lambda Proxy
+      Description: Lambda proxy using quick create
+      ProtocolType: HTTP
+      CredentialsArn: !GetAtt ApiGatewayIamRole.Arn
+      Target: !GetAtt LambdaFunction.Arn
+
+  ApiGatewayIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ""
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "apigateway.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: LambdaAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "lambda:*"
+                Resource: !GetAtt LambdaFunction.Arn
+  
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Environment:
+        Variables:
+          BUCKET_NAME:
+            Ref: bucketName
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          var s3 = new AWS.S3({signatureVersion: 'v4'});
+          const BUCKET = process.env.BUCKET_NAME;
+
+          module.exports.handler = async (event, context) => {
+            let requestObject = JSON.parse(event["body"]);
+
+            const options = {
+              "Bucket": BUCKET,
+              "Key": requestObject.fileName,
+              "ContentType": requestObject.fileType
+            }
+
+            return s3.getSignedUrl('putObject', options);
+          };
+      Description: Example Lambda function
+      Handler: index.handler
+      MemorySize: 128
+      Role: !GetAtt LambdaIAMRole.Arn
+      Runtime: nodejs12.x
+
+  LambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !GetAtt LambdaLogGroup.Arn
+              - Action:
+                  - s3:Get*
+                  - s3:Put*
+                  - s3:List*
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${bucketName}/*
+          PolicyName: lambda
+
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 90
+
+Outputs:
+  # apiGatewayInvokeURL:
+  #   Value: !Sub https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${apiGatewayStageName}
+
+  lambdaArn:
+    Value: !GetAtt LambdaFunction.Arn
+  lambdaLogGroup:
+    Value: !Ref LambdaLogGroup
+  lambdaLogGroupArn:
+    Value: !GetAtt LambdaLogGroup.Arn

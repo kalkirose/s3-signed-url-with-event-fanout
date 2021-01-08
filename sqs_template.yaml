@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Event driven S3 sns-sqs fanout example with queue depth alarm
+Parameters: 
+  AlertPhoneNumber: 
+    Type: String
+    Description: Phone number including prefix to receive Cloudwatch Alarm events
+Resources:
+  AlarmQueue:
+    Type: AWS::SQS::Queue
+  AlarmQueuePolicy:
+    ## https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-sqs-policy.html
+    Type: AWS::SQS::QueuePolicy
+    Description : "Policy to allow SNS subscription for the queue all AWS resources/services to make any sqs call. Not good security, demonstartion only"
+    Properties:
+      Queues:
+      - Ref: AlarmQueue
+      PolicyDocument:
+        Statement:
+        - Sid: Stmt1600780057463
+          Effect: Allow
+          Principal: "*"
+          Action: sqs:*
+          Resource: 
+            Fn::GetAtt:
+            - AlarmQueue
+            - Arn
+  S3EventTopic:
+    Type: AWS::SNS::Topic
+    Description : "Topic to receive events from s3"
+  S3EventTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Description : "Topic policy to allow the s3 bucket to publish events to the topic"
+    Properties:
+      PolicyDocument:
+        Id: S3EventTopicPolicy
+        Version: '2012-10-17'
+        Statement:
+        - Sid: S3EventTopicPolicyId
+          Effect: Allow
+          Principal:
+            AWS: "*"
+          Action: sns:Publish
+          Resource: "*"
+      Topics:
+      - !Ref S3EventTopic
+  SQSBucket:
+    ## Requires that the the topic policy is in place before creating inline s3 event
+    Type: AWS::S3::Bucket
+    Description : "Bucket for uploading files to trigger the notification-queue-alarm sequence"
+    DependsOn: S3EventTopicPolicy
+    Properties:
+      NotificationConfiguration:
+        TopicConfigurations:
+        - Event: s3:ObjectCreated:*
+          Topic:
+            Ref: S3EventTopic
+  SNSSubscription:
+    Type: AWS::SNS::Subscription
+    Description : "Subscription from the s3 event topic to the alarm queue"
+    Properties:
+      TopicArn:
+        Ref: S3EventTopic
+      Endpoint:
+        Fn::GetAtt:
+        - AlarmQueue
+        - Arn
+      Protocol: sqs
+      RawMessageDelivery: true 
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Description : "Topic to receive cloudwatch alarm notifications"
+    Properties: 
+      Subscription:
+        - Endpoint: !Ref AlertPhoneNumber
+          Protocol: sms 
+  QueueDepthAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Description : "Cloudwatch alarm to alert on current visible queue itemszs"
+    Properties:
+      AlarmDescription: "Alarm if queue depth grows beyond 3 messages"
+      Namespace: "AWS/SQS"
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value : { "Fn::GetAtt" : [ "AlarmQueue", "QueueName"] }
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - Ref: AlarmTopic
+      InsufficientDataActions:
+        - Ref: AlarmTopic
+  FanoutQueue:
+    Type: AWS::SQS::Queue
+    Description : "Demonstrate queue fanout"
+  FanoutQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+      - Ref: FanoutQueue
+      PolicyDocument:
+        Statement:
+        - Sid: Stmt1600780057463
+          Effect: Allow
+          Principal: "*"
+          Action: sqs:*
+          Resource: 
+            Fn::GetAtt:
+            - FanoutQueue
+            - Arn
+  SNSFanoutSubscription:
+    Type: AWS::SNS::Subscription
+    Description : "Subscription from the s3 event topic to the fanout queue"
+    Properties:
+      TopicArn:
+        Ref: S3EventTopic
+      Endpoint:
+        Fn::GetAtt:
+        - FanoutQueue
+        - Arn
+      Protocol: sqs
+      RawMessageDelivery: true 
+
+Outputs:
+  AlertPhoneNumber: 
+    Description : "Phone number including prefix to receive Cloudwatch Alarm events"
+    Value : { Ref : "AlertPhoneNumber" }
+  SQSBucketName:
+    Value: !Ref SQSBucket

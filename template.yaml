@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: My API Gateway and Lambda function
+
+Parameters:
+  AlertPhoneNumber: 
+    Type: String
+    Description: Phone number including prefix to receive Cloudwatch Alarm events
+Resources:
+  SQSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://futukalki-devops.s3.amazonaws.com/stacks/sqs_template.yaml
+      Parameters:
+        AlertPhoneNumber: !Ref AlertPhoneNumber
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://futukalki-devops.s3.amazonaws.com/stacks/lambda_template.yaml
+      Parameters:
+        bucketName: !GetAtt SQSStack.Outputs.SQSBucketName
+Outputs:
+  SQSStackRef:
+    Value: !Ref SQSStack
+  LambdaStackRef:
+    Value: !Ref LambdaStack
+  SQSBucketName:
+    Value: !GetAtt SQSStack.Outputs.SQSBucketName
+  LambdaArn:
+    Value: !GetAtt LambdaStack.Outputs.lambdaArn
+  LambdaLogGroup:
+    Value: !GetAtt LambdaStack.Outputs.lambdaLogGroup
+  LambdaLogGroupArn:
+    Value: !GetAtt LambdaStack.Outputs.lambdaLogGroupArn
