@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    {
+      "Action": [
+        "s3:Get*",
+        "s3:Put*",
+        "s3:List*"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::*"
+    }
+  ]
+}
+
+
+
+//   - s3:Get*
+//   - s3:Put*
+//   - s3:List*
+// Effect: Allow
+// Resource:
+//   - !Sub arn:aws:s3:::${bucketName}/*

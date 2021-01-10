@@ -1,0 +1,4 @@
+resources
+*/.terraform*
+*/outputs
+*/terraform.tfstate*
